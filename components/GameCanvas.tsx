@@ -29,10 +29,10 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   gameTrigger
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 400, height: 600 });
+  // Ensure we start with safe default dimensions
+  const [dimensions, setDimensions] = useState({ width: 320, height: 480 });
   
-  // Game State Refs (to avoid re-renders)
-  const shipY = useRef(300);
+  const shipY = useRef(240);
   const shipVelocity = useRef(0);
   const pipes = useRef<Obstacle[]>([]);
   const particles = useRef<Particle[]>([]);
@@ -42,7 +42,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
   const lastPipeTime = useRef(0);
   const stars = useRef<{x: number, y: number, size: number, speed: number}[]>([]);
 
-  // Initialize Stars
   useEffect(() => {
     const s = [];
     for(let i=0; i<80; i++) {
@@ -56,11 +55,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     stars.current = s;
   }, []);
 
-  // Handle Resize
   useEffect(() => {
     const handleResize = () => {
-      const w = Math.min(window.innerWidth, 480);
-      const h = Math.min(window.innerHeight - 150, 720);
+      // Prevent negative or zero dimensions which cause canvas errors
+      const w = Math.max(280, Math.min(window.innerWidth - 20, 480));
+      const h = Math.max(400, Math.min(window.innerHeight - 180, 720));
       setDimensions({ width: w, height: h });
     };
     handleResize();
@@ -68,7 +67,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Reset Logic
   useEffect(() => {
     shipY.current = dimensions.height / 2;
     shipVelocity.current = 0;
@@ -85,7 +83,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     shipVelocity.current = LIFT;
     audioService.playJump();
     
-    // Juicier Exhaust particles
     for (let i = 0; i < 12; i++) {
       particles.current.push({
         x: 65,
@@ -99,7 +96,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     }
   }, [isPlaying, isGameOver]);
 
-  // Input Listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
@@ -113,12 +109,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
   const createPipe = () => {
     const minH = 60;
-    const range = dimensions.height - PIPE_GAP - (minH * 2);
+    const range = Math.max(50, dimensions.height - PIPE_GAP - (minH * 2));
     const top = Math.random() * range + minH;
     pipes.current.push({ x: dimensions.width, top, passed: false, id: Date.now() });
   };
 
-  // Render Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -128,14 +123,14 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
     let animationFrameId: number;
 
     const render = () => {
-      // Background
+      if (!ctx) return;
+      
       const gradient = ctx.createLinearGradient(0, 0, 0, dimensions.height);
       gradient.addColorStop(0, '#020617');
       gradient.addColorStop(1, '#0f172a');
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-      // Stars
       ctx.fillStyle = COLORS.star;
       stars.current.forEach(s => {
         ctx.globalAlpha = 0.5 + Math.sin(frameCount.current * 0.05) * 0.2;
@@ -150,16 +145,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.globalAlpha = 1.0;
 
       if (isPlaying && !isGameOver) {
-        // Physics
         shipVelocity.current += GRAVITY;
         shipY.current += shipVelocity.current;
 
-        // Death by boundaries
         if (shipY.current < 0 || shipY.current + SHIP_SIZE > dimensions.height) {
           onGameOver(score.current);
         }
 
-        // Difficulty scaling
         speed.current = Math.min(MAX_SPEED, INITIAL_SPEED + (score.current * 0.1));
 
         const spawnRate = Math.max(45, 75 - (score.current * 1.5));
@@ -168,8 +160,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
           lastPipeTime.current = frameCount.current;
         }
 
-        // Pipe updates
-        pipes.current.forEach((p, idx) => {
+        pipes.current.forEach((p) => {
           p.x -= speed.current;
 
           const shipHitbox = { x: 55, y: shipY.current + 8, w: SHIP_SIZE - 20, h: SHIP_SIZE - 20 };
@@ -184,7 +175,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
             onGameOver(score.current);
           }
 
-          // Scoring
           if (!p.passed && p.x + PIPE_WIDTH < 50) {
             p.passed = true;
             score.current += 1;
@@ -194,7 +184,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
 
         pipes.current = pipes.current.filter(p => p.x + PIPE_WIDTH > 0);
 
-        // Particle updates
         particles.current.forEach(p => {
           p.x += p.vx;
           p.y += p.vy;
@@ -203,13 +192,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         particles.current = particles.current.filter(p => p.life > 0);
       }
 
-      // Draw Pipes
       pipes.current.forEach(p => {
         ctx.fillStyle = COLORS.pipe;
         ctx.shadowBlur = 10;
         ctx.shadowColor = COLORS.primary;
         ctx.fillRect(p.x, 0, PIPE_WIDTH, p.top);
-        ctx.fillRect(p.x, p.top + PIPE_GAP, PIPE_WIDTH, dimensions.height - (p.top + PIPE_GAP));
+        ctx.fillRect(p.x, p.top + PIPE_GAP, PIPE_WIDTH, Math.max(0, dimensions.height - (p.top + PIPE_GAP)));
         
         ctx.shadowBlur = 0;
         ctx.fillStyle = COLORS.primary;
@@ -218,13 +206,12 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
         
         ctx.strokeStyle = COLORS.secondary;
         ctx.lineWidth = 1;
-        ctx.strokeRect(p.x + 5, 0, PIPE_WIDTH - 10, p.top - 8);
+        ctx.strokeRect(p.x + 5, 0, PIPE_WIDTH - 10, Math.max(0, p.top - 8));
         ctx.strokeRect(p.x + 5, p.top + PIPE_GAP + 8, PIPE_WIDTH - 10, dimensions.height);
       });
 
-      // Draw Particles
       particles.current.forEach(p => {
-        ctx.globalAlpha = p.life;
+        ctx.globalAlpha = Math.max(0, p.life);
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
@@ -232,7 +219,6 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       });
       ctx.globalAlpha = 1.0;
 
-      // Draw Ship
       ctx.save();
       ctx.translate(74, shipY.current + SHIP_SIZE / 2);
       ctx.rotate(Math.max(-0.6, Math.min(1.0, shipVelocity.current * 0.07)));
@@ -280,7 +266,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({
       height={dimensions.height}
       onClick={boost}
       onTouchStart={(e) => { e.preventDefault(); boost(); }}
-      className="rounded-lg cursor-pointer"
+      style={{ touchAction: 'none' }}
+      className="rounded-lg cursor-pointer bg-slate-900 shadow-2xl"
     />
   );
 };
