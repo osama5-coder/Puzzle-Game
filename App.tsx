@@ -1,26 +1,46 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import GameCanvas from './components/GameCanvas';
-import { GameState } from './types';
-import { getMissionControlCommentary } from './services/geminiService';
-import { audioService } from './services/audioService';
+import GameCanvas from './components/GameCanvas.tsx';
+import { GameState } from './types.ts';
+import { getMissionControlCommentary } from './services/geminiService.ts';
+import { audioService } from './services/audioService.ts';
 
 const App: React.FC = () => {
+  // Defensive localStorage access
+  const getInitialHighScore = () => {
+    try {
+      return parseInt(localStorage.getItem('nebula_highscore') || '0');
+    } catch (e) {
+      return 0;
+    }
+  };
+
+  const getInitialMuted = () => {
+    try {
+      return localStorage.getItem('nebula_muted') === 'true';
+    } catch (e) {
+      return false;
+    }
+  };
+
   const [gameState, setGameState] = useState<GameState>({
     isPlaying: false,
     isGameOver: false,
     score: 0,
-    highScore: parseInt(localStorage.getItem('nebula_highscore') || '0'),
+    highScore: getInitialHighScore(),
     missionControlMsg: "WAITING FOR CLEARANCE...",
     isAiLoading: false,
-    isMuted: localStorage.getItem('nebula_muted') === 'true'
+    isMuted: getInitialMuted()
   });
   
   const [gameTrigger, setGameTrigger] = useState(0);
 
   useEffect(() => {
     audioService.setMute(gameState.isMuted);
-    localStorage.setItem('nebula_muted', gameState.isMuted.toString());
+    try {
+      localStorage.setItem('nebula_muted', gameState.isMuted.toString());
+    } catch (e) {
+      // Storage might be blocked
+    }
   }, [gameState.isMuted]);
 
   const handleGameOver = useCallback(async (finalScore: number) => {
@@ -28,7 +48,11 @@ const App: React.FC = () => {
     audioService.stopMusic();
     setGameState(prev => {
       const newHigh = Math.max(prev.highScore, finalScore);
-      localStorage.setItem('nebula_highscore', newHigh.toString());
+      try {
+        localStorage.setItem('nebula_highscore', newHigh.toString());
+      } catch (e) {
+        // Storage might be blocked
+      }
       return {
         ...prev,
         isPlaying: false,
